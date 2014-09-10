@@ -31,8 +31,47 @@ class MessageLogger:
 class DealerBot(irc.IRCClient):
     
     nickname = "dealer"
-    players = {}   
+
+    players = {}
+    joinindex = 0
+
+    def isPlayer(self, nick):
+        for k, v in self.players.iteritems():
+            if nick == v.nick:
+                return True
+        return False
  
+    def doJoin(self, msg, channel, user):
+        if self.isPlayer(user):
+            self.msg(user, "You are already playing!")
+        elif len(self.players) >= Config.PLAYERS_MAX:
+            msg = user + ": No more than " + str(Config.PLAYERS_MAX) + " players permitted."
+            self.msg(channel, msg)
+        else:
+            msg = user + " is attempting to join the game."
+            self.msg(channel, msg)
+            whois = self.whois(user)
+            # hostmask = result of /whois user; hostmask = self.whois(%s)?
+            # players[joinindex] = Player(hostmask, <%s>)
+            # joinindex = joinindex + 1
+
+    def doStart(self, msg, channel, user):
+        # Someone attempts to start  
+        if self.isPlayer(user): # Only players may start a game
+            if len(self.players) < Config.PLAYERS_MIN:
+                msg = user + ": Minimum of " + str(Config.PLAYERS_MIN) + " players required to start a game."
+                self.msg(channel, msg)
+            else:
+                self.start()
+
+    def doStats(self, msg, channel, user):
+        pass    
+
+    commands = { "j" : doJoin,
+                 "join" : doJoin,
+                 "start" : doStart,
+                 "stats" : doStats }
+
     def connectionMade(self):
         irc.IRCClient.connectionMade(self)
         self.logger = MessageLogger(open(self.factory.filename, "a"))
@@ -45,8 +84,10 @@ class DealerBot(irc.IRCClient):
                         time.asctime(time.localtime(time.time())))
         self.logger.close()
 
-
     # callbacks for events
+
+    def irc_RPL_WHOISUSER(self, prefix, params):
+        print params
 
     def signedOn(self):
         """Called when bot has succesfully signed on to server."""
@@ -73,11 +114,11 @@ class DealerBot(irc.IRCClient):
             self.msg(channel, msg)
             self.logger.log("<%s> %s" % (self.nickname, msg))
 
-        if msg.startswith("!start"):
-            if len(self.players) > Config.PLAYERS_MIN:
-                self.start()
-            else:
-                self.msg(channel, "lol no")
+
+        if msg.startswith(Config.TRIGGER):
+            cmd = msg[len(Config.TRIGGER):]
+            if cmd in self.commands:
+                self.commands[cmd](self, msg, channel, user)
 
     def action(self, user, channel, msg):
         """This will get called when the bot sees someone do an action."""
