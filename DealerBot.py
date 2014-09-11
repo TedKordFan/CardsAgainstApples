@@ -4,7 +4,7 @@ from Player import Player
 
 # twisted imports
 from twisted.words.protocols import irc
-from twisted.internet import reactor, protocol
+from twisted.internet import reactor, protocol, defer
 from twisted.python import log
 
 # system imports
@@ -31,8 +31,68 @@ class MessageLogger:
 class DealerBot(irc.IRCClient):
     
     nickname = "dealer"
-    players = {}   
+
+    players = {}
+    joinindex = 0
+    whoisinfo = {}
+
+    def isPlayer(self, nick):
+        for k, v in self.players.iteritems():
+            if nick == v.nick:
+                return True
+        return False
  
+    def doJoin(self, msg, channel, user):
+        if not self.isPlayer(user): # Ignore joiner who has already joined
+            if len(self.players) >= Config.PLAYERS_MAX:
+                msg = user + ": No more than " + str(Config.PLAYERS_MAX) + " players permitted."
+                self.msg(channel, msg)
+            else:
+                d = self.whois(user)
+                d.addCallback(self.addPlayer, user, channel)
+
+    def doQuit(self, msg, channel, user):
+        if self.isPlayer(user): # Ignore quitter who is not already playing
+            for k, player in self.players.iteritems():
+                if player.nick == user:
+                    del self.players[k]
+                    break
+            msg = user + " has left the game. "
+            if not self.players:
+                msg += "No players remaining."
+            else:
+                msg += str(len(self.players)) + " player(s) remaining."
+            self.msg(channel, msg)
+
+    def addPlayer(self, mask, nick, channel):
+        self.players[self.joinindex] = Player(mask, nick)
+        self.joinindex += 1
+        print nick + " joining."
+        for k, player in self.players.iteritems():
+          print player.nick + " " + player.hostmask
+        msg = nick + " has joined the game and raised the number of players to " + str(len(self.players)) + "."
+        self.msg(channel, msg)
+
+    def doStart(self, msg, channel, user):
+        # Someone attempts to start  
+        if self.isPlayer(user): # Only players may start a game
+            if len(self.players) < Config.PLAYERS_MIN:
+                msg = user + ": Minimum of " + str(Config.PLAYERS_MIN) + " players required to start a game."
+                self.msg(channel, msg)
+            else:
+                self.start(channel)
+
+    def doStats(self, msg, channel, user):
+        pass    
+
+    commands = { "j" : doJoin,
+                 "join" : doJoin,
+                 "leave" : doQuit,
+                 "q" : doQuit,
+                 "quit" : doQuit,
+                 "start" : doStart,
+                 "stats" : doStats }
+
     def connectionMade(self):
         irc.IRCClient.connectionMade(self)
         self.logger = MessageLogger(open(self.factory.filename, "a"))
@@ -45,8 +105,33 @@ class DealerBot(irc.IRCClient):
                         time.asctime(time.localtime(time.time())))
         self.logger.close()
 
+    # Whois wrapper
+    def whois(self, nick):
+        d = defer.Deferred()
+        if nick in self.whoisinfo:
+            ds = self.whoisinfo[nick][0]
+            ds.append(d)
+            return d
+  
+        info = {}
+        self.whoisinfo[nick] = [[d], info]
+        irc.IRCClient.whois(self, nick, None)
+        return d
 
     # callbacks for events
+
+    def irc_RPL_WHOISUSER(self, prefix, params):
+        nick = params[1]
+        mask = params[2] + '@' + params[3]
+        self.whoisinfo[nick][1] = mask
+  
+    def irc_RPL_ENDOFWHOIS(self, prefix, params):
+        nick = params[1].lower()
+        if nick in self.whoisinfo:
+            ds = self.whoisinfo[nick][0]
+            info = self.whoisinfo[nick][1]
+            del self.whoisinfo[nick]
+            [d.callback(info) for d in ds]
 
     def signedOn(self):
         """Called when bot has succesfully signed on to server."""
@@ -73,11 +158,11 @@ class DealerBot(irc.IRCClient):
             self.msg(channel, msg)
             self.logger.log("<%s> %s" % (self.nickname, msg))
 
-        if msg.startswith("!start"):
-            if len(self.players) > Config.PLAYERS_MIN:
-                self.start()
-            else:
-                self.msg(channel, "lol no")
+
+        if msg.startswith(Config.TRIGGER):
+            cmd = msg[len(Config.TRIGGER):]
+            if cmd in self.commands:
+                self.commands[cmd](self, msg, channel, user)
 
     def action(self, user, channel, msg):
         """This will get called when the bot sees someone do an action."""
@@ -102,7 +187,12 @@ class DealerBot(irc.IRCClient):
         """
         return nickname + '^'
 
-    def start(self):
+    def start(self, channel):
+        welcomemsg = ""
+        for k, player in self.players.iteritems():
+            welcomemsg += player.nick + ", "
+        welcomemsg = welcomemsg[:-2] + ": Welcome to Cards Against Apples."
+        self.msg(channel, welcomemsg)
         game = Game(self.players)
         game.play()
 
