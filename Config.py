@@ -1,4 +1,6 @@
 class Config:
+	TRIGGER = '!'
+
 	PLAYERS_MIN = 3 # min number of players before a game may start
 	PLAYERS_MAX = 30 # max number of players (mainly so game doesn't run out of cards)
 	HAND_SIZE = 8 # size of a hand (number of cards each player should have at a time)
