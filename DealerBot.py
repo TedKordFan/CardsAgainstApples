@@ -26,12 +26,13 @@ class MessageLogger:
 class DealerBot(irc.IRCClient):
     nickname = "dealer"
 
-    players = {}
+    game = None
+    playerqueue = {}
     joinindex = 0
     whoisinfo = {}
 
     def isPlayer(self, nick):
-        for k, v in self.players.iteritems():
+        for k, v in self.playerqueue.iteritems():
             if nick == v.nick:
                 return True
         return False
@@ -39,7 +40,7 @@ class DealerBot(irc.IRCClient):
 
     def doJoin(self, msg, channel, user):
         if not self.isPlayer(user): # Ignore joiner who has already joined
-            if len(self.players) >= Config.PLAYERS_MAX:
+            if len(self.playerqueue) >= Config.PLAYERS_MAX:
                 msg = user + ": No more than " + str(Config.PLAYERS_MAX) + " players permitted."
                 self.msg(channel, msg)
             else:
@@ -49,22 +50,22 @@ class DealerBot(irc.IRCClient):
 
     def doQuit(self, msg, channel, user):
         if self.isPlayer(user): # Ignore quitter who is not already playing
-            for k, player in self.players.iteritems():
+            for k, player in self.playerqueue.iteritems():
                 if player.nick == user:
-                    del self.players[k]
+                    del self.playerqueue[k]
                     break
             msg = user + " has left the game. "
-            if not self.players:
+            if not self.playerqueue:
                 msg += "No players remaining."
             else:
-                msg += str(len(self.players)) + " player(s) remaining."
+                msg += str(len(self.playerqueue)) + " player(s) remaining."
             self.msg(channel, msg)
 
 
     def doStart(self, msg, channel, user):
         # Someone attempts to start  
         if self.isPlayer(user): # Only players may start a game
-            if len(self.players) < Config.PLAYERS_MIN:
+            if len(self.playerqueue) < Config.PLAYERS_MIN:
                 msg = user + ": Minimum of " + str(Config.PLAYERS_MIN) + " players required to start a game."
                 self.msg(channel, msg)
             else:
@@ -76,12 +77,12 @@ class DealerBot(irc.IRCClient):
 
 
     def addPlayer(self, mask, nick, channel):
-        self.players[self.joinindex] = Player(mask, nick)
+        self.playerqueue[self.joinindex] = Player(mask, nick)
         self.joinindex += 1
         print nick + " joining."
-        for k, player in self.players.iteritems():
+        for k, player in self.playerqueue.iteritems():
           print player.nick + " " + player.hostmask
-        msg = nick + " has joined the game and raised the number of players to " + str(len(self.players)) + "."
+        msg = nick + " has joined the game and raised the number of players to " + str(len(self.playerqueue)) + "."
         self.msg(channel, msg)
 
 
@@ -182,22 +183,24 @@ class DealerBot(irc.IRCClient):
 
     def start(self, channel):
         welcomemsg = ""
-        for k, player in self.players.iteritems():
+        for k, player in self.playerqueue.iteritems():
             welcomemsg += player.nick + ", "
         welcomemsg = welcomemsg[:-2] + ": Welcome to Cards Against Apples."
         self.msg(channel, welcomemsg)
-        game = Game(self.players)
-       # game.play()
-        idindex = 0 
-        while len(game.players) >= 2 and len(game.players) < len(game.answers.cards) and game.winner is None:
-            id = game.ids[idindex]
+        self.game = Game(self.playerqueue)
 
-            question = game.questions.take()
-            if question is None:
-              break
+        # prototype
+        setter = self.game.getNextSetter()
+        question = self.game.dealQuestion()
+        msg = setter.nick + " asks: " + question
+        self.msg(channel, msg)
 
-            print "(player " + str(id) + ") " +game.players[id].nick + " asks: " + question
-            idindex = (idindex + 1) % len(game.ids)
+        # the actual loop (not testing here)
+        while self.game.toContinue():
+            setter = self.game.getNextSetter()
+            question = self.game.dealQuestion()
+
+            print "[Bot] " + setter.nick + " asks: " + question
 
 
 class DealerBotFactory(protocol.ClientFactory):
