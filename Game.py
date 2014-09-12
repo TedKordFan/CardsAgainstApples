@@ -35,7 +35,10 @@ class Game:
         return self.questions.take()
 
     def awardQuestion(nick, card):
-        self.players_bynick[nick].qcards_won.add(card)
+        winner = self.players_bynick[nick]
+        winner.qcards_won.add(card)
+        if len(winner.qcards_won) >= Config.GOAL:
+            self.winner = winner
 
     def getNextSetter(self):
         id = self.ids[self.idindex]
@@ -43,3 +46,26 @@ class Game:
         print "[Game] returning next setter: (player " + str(id) + ") " + setter.nick
         self.idindex = (self.idindex + 1) % len(self.ids)
         return setter
+
+    def getWinners(self):
+
+        if self.winner is not None:
+            return [self.winner]
+
+        if not self.players_bynick:
+           return []
+
+        curwinners = []
+        curscore = 0
+        for nick, player in self.players_bynick.iteritems():
+            playerscore = len(player.qcards_won)
+            if not curwinners:
+                curwinners.append(player)
+                curscore = playerscore
+            elif playerscore == curscore:
+                curwinners.append(player)
+            elif playerscore > curscore:
+                curwinners = [player]
+                curscore = playerscore
+
+        return curwinners

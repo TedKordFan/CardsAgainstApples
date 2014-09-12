@@ -37,7 +37,6 @@ class DealerBot(irc.IRCClient):
                 return True
         return False
 
-
     def doJoin(self, msg, channel, user):
         if not self.isPlayer(user): # Ignore joiner who has already joined
             if len(self.playerqueue) >= Config.PLAYERS_MAX:
@@ -196,11 +195,10 @@ class DealerBot(irc.IRCClient):
         self.msg(channel, msg)
 
         # the actual loop (not testing here)
-        while self.game.toContinue():
-            setter = self.game.getNextSetter()
-            question = self.game.dealQuestion()
-
-            print "[Bot] " + setter.nick + " asks: " + question
+        #while self.game.toContinue():
+        #    setter = self.game.getNextSetter()
+        #    question = self.game.dealQuestion()
+        #    print "[Bot] " + setter.nick + " asks: " + question
 
 
 class DealerBotFactory(protocol.ClientFactory):
