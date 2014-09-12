@@ -69,7 +69,10 @@ class DealerBot(irc.IRCClient):
             self.msg(channel, msg)
 
     def doScore(self, msg, channel, user):
-        pass
+        if self.game is not None:
+            msg = user + ": Current scores: " + self.game.scoresToString()
+            self.msg(channel, msg)
+            print msg
 
     def doSelect(self, msg, channel, user):
         pass
@@ -185,8 +188,9 @@ class DealerBot(irc.IRCClient):
         # Check to see if they're sending a private message
         # These are the same as messages in channel with trigger, except that here trigger is not needed
         if channel == self.nickname:
-            if msg in self.commands:
-                self.commands[msg](self, msg, channel, user)            
+            cmd = msg.split(' ')[0]
+            if cmd in self.commands:
+                self.commands[cmd](self, msg, channel, user)            
 
         # Otherwise check to see if it is a message directed at me
         #if msg.startswith(self.nickname + ":"):
@@ -196,7 +200,8 @@ class DealerBot(irc.IRCClient):
 
         # Check whether it starts with trigger
         if msg.startswith(Config.TRIGGER):
-            cmd = msg[len(Config.TRIGGER):]
+            cmd = msg.split(' ')[0][len(Config.TRIGGER):]
+#            cmd = msg[len(Config.TRIGGER):]
             if cmd in self.commands:
                 self.commands[cmd](self, msg, channel, user)
 

@@ -36,7 +36,7 @@ class Game:
 
     def awardQuestion(self, nick, card):
         winner = self.players_bynick[nick]
-        winner.qcards_won.add(card)
+        winner.awardQuestion(card)
         if len(winner.qcards_won) >= Config.GOAL:
             self.winner = winner
 
@@ -44,6 +44,12 @@ class Game:
         msg = ""
         for k, player in self.players_byorder.iteritems():
             msg += player.nick + ", "
+        return msg[:-2]
+
+    def scoresToString(self):
+        msg = ""
+        for k, player in self.players_byorder.iteritems():
+            msg += player.nick + ": " + str(player.getScore()) + ", "
         return msg[:-2]
 
     def getPlayer(self, nick):
