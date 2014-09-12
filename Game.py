@@ -34,11 +34,22 @@ class Game:
     def dealQuestion(self):
         return self.questions.take()
 
-    def awardQuestion(nick, card):
+    def awardQuestion(self, nick, card):
         winner = self.players_bynick[nick]
         winner.qcards_won.add(card)
         if len(winner.qcards_won) >= Config.GOAL:
             self.winner = winner
+
+    def getWelcome(self):
+        msg = ""
+        for k, player in self.players_byorder.iteritems():
+            msg += player.nick + ", "
+        return msg[:-2]
+
+    def getPlayer(self, nick):
+        if nick in self.players_bynick:
+            return self.players_bynick[nick]
+        return None
 
     def getNextSetter(self):
         id = self.ids[self.idindex]

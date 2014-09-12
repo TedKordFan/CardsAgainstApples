@@ -13,5 +13,5 @@ class Player:
     def handToString(self):
         hand = ""
         for i in range(len(self.acards_held)):
-            hand += "[" + str(i) + "] " + self.acards_held[i] + ", "
+            hand += "[" + str(i+1) + "] " + self.acards_held[i] + ", "
         return hand[:-2]

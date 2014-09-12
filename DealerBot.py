@@ -31,24 +31,32 @@ class DealerBot(irc.IRCClient):
     joinindex = 0
     whoisinfo = {}
 
-    def isPlayer(self, nick):
+    def isQueued(self, nick):
         for k, v in self.playerqueue.iteritems():
             if nick == v.nick:
                 return True
         return False
 
+    def doHand(self, msg, channel, user):
+        if self.game is not None:
+            player = self.game.getPlayer(user)
+            if player is not None:          
+                msg = "Your cards: " + player.handToString()  
+                self.msg(user, msg)
+
     def doJoin(self, msg, channel, user):
-        if not self.isPlayer(user): # Ignore joiner who has already joined
-            if len(self.playerqueue) >= Config.PLAYERS_MAX:
+        if not self.isQueued(user): # Ignore joiner who has already joined
+            if self.game is not None:
+                self.msg(user, "Game is currently in progress. Please wait until it has finished and join the next one!")
+            elif len(self.playerqueue) >= Config.PLAYERS_MAX:
                 msg = user + ": No more than " + str(Config.PLAYERS_MAX) + " players permitted."
                 self.msg(channel, msg)
             else:
                 d = self.whois(user)
                 d.addCallback(self.addPlayer, user, channel)
 
-
     def doQuit(self, msg, channel, user):
-        if self.isPlayer(user): # Ignore quitter who is not already playing
+        if self.isQueued(user): # Ignore quitter who is not already playing
             for k, player in self.playerqueue.iteritems():
                 if player.nick == user:
                     del self.playerqueue[k]
@@ -60,15 +68,37 @@ class DealerBot(irc.IRCClient):
                 msg += str(len(self.playerqueue)) + " player(s) remaining."
             self.msg(channel, msg)
 
+    def doScore(self, msg, channel, user):
+        pass
+
+    def doSelect(self, msg, channel, user):
+        pass
+
+    def doSend(self, msg, channel, user):
+        pass
 
     def doStart(self, msg, channel, user):
         # Someone attempts to start  
-        if self.isPlayer(user): # Only players may start a game
+        if self.isQueued(user): # Only players may start a game
             if len(self.playerqueue) < Config.PLAYERS_MIN:
                 msg = user + ": Minimum of " + str(Config.PLAYERS_MIN) + " players required to start a game."
                 self.msg(channel, msg)
             else:
-                self.start(channel)
+                self.game = Game(self.playerqueue)
+                self.msg(channel, self.game.getWelcome())
+                self.playerqueue = {}        
+
+                # prototype
+                setter = self.game.getNextSetter()
+                question = self.game.dealQuestion()
+                msg = setter.nick + " asks: " + question
+                self.msg(channel, msg)
+
+                # the actual loop (not testing here)
+                #while self.game.toContinue():
+                #    setter = self.game.getNextSetter()
+                #    question = self.game.dealQuestion()
+                #    print "[Bot] " + setter.nick + " asks: " + question
 
 
     def doStats(self, msg, channel, user):
@@ -85,11 +115,17 @@ class DealerBot(irc.IRCClient):
         self.msg(channel, msg)
 
 
-    commands = { "j" : doJoin,
+    commands = { "exit" : doQuit,
+                 "hand" : doHand,
+                 "j" : doJoin,
                  "join" : doJoin,
                  "leave" : doQuit,
                  "q" : doQuit,
                  "quit" : doQuit,
+                 "score" : doScore,
+                 "scores" : doScore,
+                 "select" : doSelect,
+                 "send" : doSend,
                  "start" : doStart,
                  "stats" : doStats }
 
@@ -146,18 +182,19 @@ class DealerBot(irc.IRCClient):
         user = user.split('!', 1)[0]
         self.logger.log("<%s> %s" % (user, msg))
         
-        # Check to see if they're sending me a private message
+        # Check to see if they're sending a private message
+        # These are the same as messages in channel with trigger, except that here trigger is not needed
         if channel == self.nickname:
-            msg = "Dealer's choice"
-            self.msg(user, msg)
+            if msg in self.commands:
+                self.commands[msg](self, msg, channel, user)            
 
         # Otherwise check to see if it is a message directed at me
-        if msg.startswith(self.nickname + ":"):
-            msg = "%s: lol" % user
-            self.msg(channel, msg)
-            self.logger.log("<%s> %s" % (self.nickname, msg))
+        #if msg.startswith(self.nickname + ":"):
+        #    msg = "%s: lol" % user
+        #    self.msg(channel, msg)
+        #    self.logger.log("<%s> %s" % (self.nickname, msg))
 
-
+        # Check whether it starts with trigger
         if msg.startswith(Config.TRIGGER):
             cmd = msg[len(Config.TRIGGER):]
             if cmd in self.commands:
@@ -179,26 +216,6 @@ class DealerBot(irc.IRCClient):
 
     def alterCollidedNick(self, nickname):
         return nickname + '^'
-
-    def start(self, channel):
-        welcomemsg = ""
-        for k, player in self.playerqueue.iteritems():
-            welcomemsg += player.nick + ", "
-        welcomemsg = welcomemsg[:-2] + ": Welcome to Cards Against Apples."
-        self.msg(channel, welcomemsg)
-        self.game = Game(self.playerqueue)
-
-        # prototype
-        setter = self.game.getNextSetter()
-        question = self.game.dealQuestion()
-        msg = setter.nick + " asks: " + question
-        self.msg(channel, msg)
-
-        # the actual loop (not testing here)
-        #while self.game.toContinue():
-        #    setter = self.game.getNextSetter()
-        #    question = self.game.dealQuestion()
-        #    print "[Bot] " + setter.nick + " asks: " + question
 
 
 class DealerBotFactory(protocol.ClientFactory):
