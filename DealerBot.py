@@ -45,7 +45,7 @@ class DealerBot(irc.IRCClient):
                 self.msg(user, msg)
 
     def doJoin(self, msg, channel, user):
-        if not self.isQueued(user): # Ignore joiner who has already joined
+        if not self.isQueued(user) and channel != self.nickname: # Ignore joiner who has already joined; no joining games from PM
             if self.game is not None:
                 self.msg(user, "Game is currently in progress. Please wait until it has finished and join the next one!")
             elif len(self.playerqueue) >= Config.PLAYERS_MAX:
@@ -54,6 +54,15 @@ class DealerBot(irc.IRCClient):
             else:
                 d = self.whois(user)
                 d.addCallback(self.addPlayer, user, channel)
+
+    def doPlayers(self, msg, channel, user):
+        msg = user
+        if self.game is not None:
+            msg += ": There is a game in progress. There are currently " + str(self.game.getPlayerCount())
+            msg += " playing: " + self.game.playersToString() + ". The current question-setter is " + self.game.getSetter().nick + "."
+        else:
+            msg += ": There is no game in progress. There are currently " + str(len(self.playerqueue)) + " players waiting for a game to begin."
+        self.msg(channel, msg)
 
     def doQuit(self, msg, channel, user):
         if self.isQueued(user): # Ignore quitter who is not already playing
@@ -82,7 +91,7 @@ class DealerBot(irc.IRCClient):
 
     def doStart(self, msg, channel, user):
         # Someone attempts to start  
-        if self.isQueued(user): # Only players may start a game
+        if self.isQueued(user) and channel != self.nickname: # Only players may start a game; no starting games from PM
             if len(self.playerqueue) < Config.PLAYERS_MIN:
                 msg = user + ": Minimum of " + str(Config.PLAYERS_MIN) + " players required to start a game."
                 self.msg(channel, msg)
@@ -92,21 +101,28 @@ class DealerBot(irc.IRCClient):
                 self.playerqueue = {}        
 
                 # prototype
-                setter = self.game.getNextSetter()
-                question = self.game.dealQuestion()
-                msg = setter.nick + " asks: " + question
-                self.msg(channel, msg)
+                self.round(channel)
 
                 # the actual loop (not testing here)
                 #while self.game.toContinue():
-                #    setter = self.game.getNextSetter()
-                #    question = self.game.dealQuestion()
-                #    print "[Bot] " + setter.nick + " asks: " + question
+                #    self.round(channel)
 
+                self.msg(channel, "Game over!")
+                self.printWinner(channel)
+                self.game = None
 
     def doStats(self, msg, channel, user):
         pass    
 
+    def round(self, channel):
+        setter = self.game.getSetter()
+        question = self.game.dealQuestion()
+        msg = setter.nick + " asks: " + question
+        self.msg(channel, msg)
+        # await responses
+        # wait for setterto select winner
+        # self.game.updateSetter()
+        # return
 
     def addPlayer(self, mask, nick, channel):
         self.playerqueue[self.joinindex] = Player(mask, nick)
@@ -123,6 +139,7 @@ class DealerBot(irc.IRCClient):
                  "j" : doJoin,
                  "join" : doJoin,
                  "leave" : doQuit,
+                 "players" : doPlayers,
                  "q" : doQuit,
                  "quit" : doQuit,
                  "score" : doScore,
@@ -132,6 +149,22 @@ class DealerBot(irc.IRCClient):
                  "start" : doStart,
                  "stats" : doStats }
 
+    def printWinner(self, channel):
+        winners, winningscore = self.game.getWinners()
+        msg = ""
+
+        if winners is not None and winningscore > 0:
+            if len(winners) == 1:
+                msg = "The winner is: " + winners[0] + " with " + str(winningscore) + " points!"
+            else:
+                msg = "There are " + str(len(winners)) + " players tied as winner: "
+                for i in range(len(winners)-1):
+                    msg += winners[i].nick + ", "
+                msg += "and " + winners[len(winners)-1].nick + ", all on " + str(winningscore) + " points!"
+        else:
+            msg = "There were no winners in this game."
+
+        self.msg(channel, msg)
 
     def connectionMade(self):
         irc.IRCClient.connectionMade(self)

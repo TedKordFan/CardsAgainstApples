@@ -23,6 +23,7 @@ class Game:
             self.ids.append(order)
 
         self.idindex = 0
+        self.setter = self.players_byorder[self.ids[self.idindex]] # Current question-setter
 
     # Ensures that there is no winner yet, and that there are appropriate numbers of players, questions, and answers remaining
     def toContinue(self):
@@ -52,17 +53,31 @@ class Game:
             msg += player.nick + ": " + str(player.getScore()) + ", "
         return msg[:-2]
 
+    def getPlayerCount(self):
+        return len(self.players_byorder)
+
+    def playersToString(self):
+        msg = ""
+        for i in range(len(self.ids)-1):
+            msg += self.players_byorder[self.ids[i]].nick + ", "
+        msg += "and " + self.players_byorder[self.ids[len(self.ids)-1]].nick
+        return msg
+
     def getPlayer(self, nick):
         if nick in self.players_bynick:
             return self.players_bynick[nick]
         return None
 
-    def getNextSetter(self):
+    def getSetter(self):
+        return self.setter
+
+    # Update current question-setter
+    def updateSetter(self):
         id = self.ids[self.idindex]
         setter = self.players_byorder[id]
-        print "[Game] returning next setter: (player " + str(id) + ") " + setter.nick
+        print "[Game] next setter: (player " + str(id) + ") " + setter.nick
         self.idindex = (self.idindex + 1) % len(self.ids)
-        return setter
+        self.setter = setter
 
     def getWinners(self):
 
@@ -85,4 +100,4 @@ class Game:
                 curwinners = [player]
                 curscore = playerscore
 
-        return curwinners
+        return curwinners, curscore
