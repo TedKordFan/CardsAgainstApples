@@ -45,13 +45,34 @@ class Game:
         msg = ""
         for k, player in self.players_byorder.iteritems():
             msg += player.nick + ", "
-        return msg[:-2]
+        return msg[:-2] + ": Welcome to Cards Against Apples!"
 
     def scoresToString(self):
         msg = ""
         for k, player in self.players_byorder.iteritems():
             msg += player.nick + ": " + str(player.getScore()) + ", "
         return msg[:-2]
+
+    def isPlayer(self, nick):
+        return nick in self.players_bynick
+
+    def removePlayer(self, nick):
+        player = self.players_bynick[nick]
+
+        if self.setter == player:
+            self.updateSetter()
+
+        del self.players_bynick[nick]
+        id_todelete = -1
+        for order, player in self.players_byorder.iteritems():
+            if nick == player.nick:
+                id_todelete = order
+                del self.players_byorder[order]
+                break
+        for id in self.ids:
+            if id_todelete == id:
+                self.ids.remove(id)
+                break
 
     def getPlayerCount(self):
         return len(self.players_byorder)
