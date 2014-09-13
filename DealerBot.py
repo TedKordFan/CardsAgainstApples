@@ -109,16 +109,20 @@ class DealerBot(irc.IRCClient):
 
                 self.msg(channel, "Game over!")
                 self.printWinner(channel)
+                # this works, but commenting this out for testing to reduce spam
+                #for order, player in self.game.players_byorder.iteritems():
+                #    self.mode(channel, False, "v", None, player.nick)
+                self.topic(channel, Config.TOPIC_DEFAULT)
                 self.game = None
 
     def doStats(self, msg, channel, user):
-        pass    
+        pass
 
     def round(self, channel):
         setter = self.game.getSetter()
         question = self.game.dealQuestion()
         msg = setter.nick + " asks: " + question
-        self.msg(channel, msg)
+        self.topic(channel, msg)
         # await responses
         # wait for setterto select winner
         # self.game.updateSetter()
@@ -132,6 +136,8 @@ class DealerBot(irc.IRCClient):
           print player.nick + " " + player.hostmask
         msg = nick + " has joined the game and raised the number of players to " + str(len(self.playerqueue)) + "."
         self.msg(channel, msg)
+        # this works, but commenting out during testing to reduce spam
+        #self.mode(channel, True, "v", None, nick)
 
 
     commands = { "exit" : doQuit,

@@ -11,3 +11,4 @@ class Config:
 	SELECT_TIME = 180 # questioning player has this long to select the winning answer after all answers are received (or SEND_TIME is reached)
 	FILENAME_ANSWERS = 'answers.txt'
 	FILENAME_QUESTIONS = 'questions.txt'
+        TOPIC_DEFAULT = 'join: !j'
