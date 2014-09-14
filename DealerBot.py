@@ -9,6 +9,7 @@ from twisted.python import log
 
 # system imports
 import re, sys, time
+from random import shuffle
 
 class MessageLogger:
     def __init__(self, file):
@@ -25,6 +26,7 @@ class MessageLogger:
 
 class DealerBot(irc.IRCClient):
     nickname = "dealer"
+    channel_default = Config.CHANNEL_DEFAULT
 
     game = None
     playerqueue = {}
@@ -37,34 +39,34 @@ class DealerBot(irc.IRCClient):
                 return True
         return False
 
-    def doHand(self, tokens, channel, user):
+    def doHand(self, tokens, source, user):
         if self.game is not None:
             player = self.game.getPlayer(user)
             if player is not None:          
-                msg = "Your cards: " + player.handToString()  
+                msg = "Your cards: " + player.handToString() + ". Play a card by typing \"send <number>\"."
                 self.msg(user, msg)
 
-    def doJoin(self, tokens, channel, user):
-        if not self.isQueued(user) and channel != self.nickname: # Ignore joiner who has already joined; no joining games from PM
+    def doJoin(self, tokens, source, user):
+        if not self.isQueued(user) and source != self.nickname: # Ignore joiner who has already joined; no joining games from PM
             if self.game is not None:
                 self.msg(user, "Game is currently in progress. Please wait until it has finished and join the next one!")
             elif len(self.playerqueue) >= Config.PLAYERS_MAX:
                 msg = user + ": No more than " + str(Config.PLAYERS_MAX) + " players permitted."
-                self.msg(channel, msg)
+                self.msg(self.channel_default, msg)
             else:
                 d = self.whois(user)
-                d.addCallback(self.addPlayer, user, channel)
+                d.addCallback(self.addPlayer, user)
 
-    def doPlayers(self, tokens, channel, user):
+    def doPlayers(self, tokens, source, user):
         msg = user + ": "
         if self.game is not None:
             msg += "There is a game in progress. There are currently " + str(self.game.getPlayerCount())
             msg += " playing: " + self.game.playersToString() + ". The current question-setter is " + self.game.getSetter().nick + "."
         else:
             msg += "There is no game in progress. There are currently " + str(len(self.playerqueue)) + " players waiting for a game to begin."
-        self.msg(channel, msg)
+        self.msg(self.channel_default, msg)
 
-    def doQuit(self, tokens, channel, user):
+    def doQuit(self, tokens, source, user):
         if self.isQueued(user): # Game has not started, but player in queue wishes to quit
             for k, player in self.playerqueue.iteritems():
                 if player.nick == user:
@@ -75,8 +77,8 @@ class DealerBot(irc.IRCClient):
                 msg += "No players remaining."
             else:
                 msg += str(len(self.playerqueue)) + " player(s) remaining."
-            self.msg(channel, msg)
-            #self.mode(channel, False, "v", None, user)
+            self.msg(self.channel_default, msg)
+            #self.mode(self.channel_default, False, "v", None, user)
         elif self.game is not None and self.game.isPlayer(user): # Game has started, player wishes to quit
             self.game.removePlayer(user)
             remaining = self.game.getPlayerCount()
@@ -89,48 +91,94 @@ class DealerBot(irc.IRCClient):
                 # Handle this - declare them the winner
             else:
                 msg += str(self.game.getPlayerCount()) + " player(s) remaining."
-            self.msg(channel, msg)
-            #self.mode(channel, False, "v", None, user)
+            self.msg(self.channel_default, msg)
+            #self.mode(self.channel_default, False, "v", None, user)
 
-    def doScore(self, tokens, channel, user):
+    def doScore(self, tokens, source, user):
         if self.game is not None:
             msg = user + ": Current scores: " + self.game.scoresToString()
-            self.msg(channel, msg)
+            self.msg(self.channel_default, msg)
             print msg
 
-    def doSelect(self, tokens, channel, user):
+    def doSelect(self, tokens, source, user):
         if self.game is not None:
             player = self.game.getPlayer(user)
             if player is not None:
                 if player is self.game.getSetter():
-                    pass # insert what to do here
+                    msg = ""
+                    winningcard = None
+                    if not self.game.answersReady():
+                        msg = "Not all answers have been received yet. Be patient!"
+                    elif len(tokens) < 2:
+                        msg = "You have to tell me which card you want to select."
+                    else:
+                        possible = self.game.played
+                        try:
+                            index = int(tokens[1])
+                            if index < 1 or index > len(possible):
+                                msg = "Please select a card number from 1 to " + str(len(possible)) + ", inclusive."
+                            else:
+                                winningcard = self.game.played[index-1]
+                                msg = "You have selected card #" + str(index) + ": \"" + winningcard[0] + "\"."                                
+                        except:
+                            msg = "Please select an actual number, from 1 to " + str(len(possible)) + ", inclusive."
+                    self.msg(user, msg)
+                    if winningcard is not None:
+                        self.awardWin(winningcard)
+                        if self.game.toContinue():
+                            self.game.resetRound()
+                            #self.endGame()
+                            self.round()
+                        else:
+                            self.endGame()
                 else:
                     msg = "You are not the question-setter!"
                     self.msg(user, msg)
 
-    def doSend(self, tokens, channel, user):
+    def doSend(self, tokens, source, user):
         if self.game is not None:
             player = self.game.getPlayer(user)
             if player is not None:
+                msg = ""
                 if player is not self.game.getSetter():
-                    pass # insert what to do here
+                    if player.acard_played is not None:
+                        msg = "You have already played a card."
+                    elif len(tokens) < 2:
+                        msg = "You have to tell me which card you want to send."
+                    else:
+                        available = len(player.acards_held)
+                        try:
+                            index = int(tokens[1])
+                            if index < 1 or index > available:
+                                msg = "Please select a card number from 1 to " + str(available) + ", inclusive."
+                            else:
+                                sending = player.acards_held[index-1]
+                                player.acard_played = sending
+                                self.game.played.append((sending, player))
+                                msg = "You have sent card #" + str(index) + ": \"" + sending + "\"."
+                        except:
+                            msg = "Please select an actual number, from 1 to " + str(available) + ", inclusive."
+                    self.msg(user, msg)
+                    if self.game.answersReady():
+                        shuffle(self.game.played) # Shuffle the potential answers for the question-setter
+                        self.printSentToSetter()
                 else:
                     msg = "You may not send an answer, as you are setting the question!"
                     self.msg(user, msg)
 
-    def doStart(self, tokens, channel, user):
+    def doStart(self, tokens, source, user):
         # Someone attempts to start  
-        if self.isQueued(user) and channel != self.nickname: # Only players may start a game; no starting games from PM
+        if self.isQueued(user) and source != self.nickname: # Only players may start a game; no starting games from PM
             if len(self.playerqueue) < Config.PLAYERS_MIN:
                 msg = user + ": Minimum of " + str(Config.PLAYERS_MIN) + " players required to start a game."
-                self.msg(channel, msg)
+                self.msg(self.channel_default, msg)
             else:
                 self.game = Game(self.playerqueue)
-                self.msg(channel, self.game.getWelcome())
+                self.msg(self.channel_default, self.game.getWelcome())
                 self.playerqueue = {}        
 
                 # prototype
-                self.round(channel)
+                self.round()
 
                 # the actual loop (not testing here)
                 #while self.game.toContinue():
@@ -138,38 +186,38 @@ class DealerBot(irc.IRCClient):
 
                #self.endGame(channel)
 
-    def doStats(self, tokens, channel, user):
+    def doStats(self, tokens, source, user):
         pass
 
-    def round(self, channel):
+    def round(self):
         setter = self.game.getSetter()
         question = self.game.dealQuestion()
         msg = setter.nick + " asks: " + question
-        self.topic(channel, msg)
+        self.topic(self.channel_default, msg)
         # await responses
         # wait for setterto select winner
         # self.game.updateSetter()
         # return
 
-    def addPlayer(self, mask, nick, channel):
+    def addPlayer(self, mask, nick):
         self.playerqueue[self.joinindex] = Player(mask, nick)
         self.joinindex += 1
         print nick + " joining."
         for k, player in self.playerqueue.iteritems():
           print player.nick + " " + player.hostmask
         msg = nick + " has joined the game and raised the number of players to " + str(len(self.playerqueue)) + "."
-        self.msg(channel, msg)
+        self.msg(self.channel_default, msg)
         # this works, but commenting out during testing to reduce spam
-        #self.mode(channel, True, "v", None, nick)
+        #self.mode(self.channel_default, True, "v", None, nick)
 
-    def endGame(self, channel):
-        self.msg(channel, "Game over!")
-        self.printWinner(channel)
+    def endGame(self):
+        self.msg(self.channel_default, "Game over!")
+        self.printWinner()
         for order, player in self.game.players_byorder.iteritems():
-            self.mode(channel, False, "v", None, player.nick)
-        self.topic(channel, Config.TOPIC_DEFAULT)
+            self.mode(self.channel_default, False, "v", None, player.nick)
+        self.topic(self.channel_default, Config.TOPIC_DEFAULT)
         self.game = None
-
+        self.joinindex = 0
 
     commands = { "exit" : doQuit,
                  "hand" : doHand,
@@ -186,13 +234,13 @@ class DealerBot(irc.IRCClient):
                  "start" : doStart,
                  "stats" : doStats }
 
-    def printWinner(self, channel):
+    def printWinner(self):
         winners, winningscore = self.game.getWinners()
         msg = ""
 
         if winners is not None and winningscore > 0:
             if len(winners) == 1:
-                msg = "The winner is: " + winners[0] + " with " + str(winningscore) + " points!"
+                msg = "The winner is: " + winners[0].nick + " with " + str(winningscore) + " points!"
             else:
                 msg = "There are " + str(len(winners)) + " players tied as winner: "
                 for i in range(len(winners)-1):
@@ -201,7 +249,30 @@ class DealerBot(irc.IRCClient):
         else:
             msg = "There were no winners in this game."
 
-        self.msg(channel, msg)
+        self.msg(self.channel_default, msg)
+
+    def printSentToSetter(self):
+        setter = self.game.getSetter()
+        msg = "Please select one of the following by typing \"select <number>\": "
+        for i in range(len(self.game.played)):
+            msg += "[" + str(i+1) + "] " + self.game.played[i][0] + ", "
+        msg = msg[:-2] + "."
+        self.msg(setter.nick, msg)
+
+    def printSentToChannel(self):
+        msg = "The available choices were: "
+        for i in range(len(self.game.played)):
+            msg += "[" + self.game.played[i][1].nick + "] " + self.game.played[i][0] + ", "
+        msg = msg[:-2] + "."
+        self.msg(self.channel_default, msg)
+
+    def awardWin(self, winningcard):
+        card = winningcard[0]
+        player = winningcard[1]
+        self.game.awardQuestion(player, card)
+        self.printSentToChannel()
+        msg = "The winning answer was " + player.nick + "'s: \"" + card + "\"."
+        self.msg(self.channel_default, msg)
 
     def connectionMade(self):
         irc.IRCClient.connectionMade(self)

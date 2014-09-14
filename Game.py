@@ -24,6 +24,16 @@ class Game:
 
         self.idindex = 0
         self.setter = self.players_byorder[self.ids[self.idindex]] # Current question-setter
+        self.played = [] # List of tuples, each tuple composed of a card and the player that played it
+
+    def resetRound(self):
+        for nick, player in self.players_bynick.iteritems():
+            if player.acard_played is not None:
+                player.acards_held.remove(player.acard_played)
+                player.acard_played = None
+                self.dealAnswer(nick)
+        self.played = []
+        self.updateSetter()
 
     # Ensures that there is no winner yet, and that there are appropriate numbers of players, questions, and answers remaining
     def toContinue(self):
@@ -35,11 +45,13 @@ class Game:
     def dealQuestion(self):
         return self.questions.take()
 
-    def awardQuestion(self, nick, card):
-        winner = self.players_bynick[nick]
+    def awardQuestion(self, winner, card):
         winner.awardQuestion(card)
         if len(winner.qcards_won) >= Config.GOAL:
             self.winner = winner
+
+    def answersReady(self):
+        return len(self.played) == (len(self.players_byorder)-1) # Is this too brittle? Need to check every player maybe?
 
     def getWelcome(self):
         msg = ""
@@ -94,10 +106,10 @@ class Game:
 
     # Update current question-setter
     def updateSetter(self):
+        self.idindex = (self.idindex + 1) % len(self.ids)
         id = self.ids[self.idindex]
         setter = self.players_byorder[id]
         print "[Game] next setter: (player " + str(id) + ") " + setter.nick
-        self.idindex = (self.idindex + 1) % len(self.ids)
         self.setter = setter
 
     def getWinners(self):

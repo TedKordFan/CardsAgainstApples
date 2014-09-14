@@ -12,3 +12,4 @@ class Config:
 	FILENAME_ANSWERS = 'answers.txt'
 	FILENAME_QUESTIONS = 'questions.txt'
         TOPIC_DEFAULT = 'join: !j'
+        CHANNEL_DEFAULT = '#caa'
