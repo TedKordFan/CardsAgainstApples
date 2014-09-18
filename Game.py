@@ -134,3 +134,62 @@ class Game:
                 curscore = playerscore
 
         return curwinners, curscore
+
+    def getSelectResponse(self, tokens, user):
+
+        msg = ""
+        winningcard = None
+        player = self.getPlayer(user)
+
+        if player is not None:
+            if player is self.getSetter():
+                if not self.answersReady():
+                    msg = "Not all answers have been received yet. Be patient!"
+                elif len(tokens) < 2:
+                    msg = "You have to tell me which card you want to select."
+                else:
+                    possible = self.played
+                    try:
+                        index = int(tokens[1])
+                        if index < 1 or index > len(possible):
+                            msg = "Please select a card number from 1 to " + str(len(possible)) + ", inclusive."
+                        else:
+                            winningcard = self.played[index-1]
+                            msg = "You have selected card #" + str(index) + ": \"" + winningcard[0] + "\"."                                
+                    except:
+                        msg = "Please select an actual number, from 1 to " + str(len(possible)) + ", inclusive."
+            else:
+                msg = "You are not the question-setter!"
+
+        return msg, winningcard
+
+    def getSendResponse(self, tokens, user):
+
+        msg = ""
+        ready = False
+        player = self.getPlayer(user)
+
+        if player is not None:
+            if player is not self.getSetter():
+                if player.acard_played is not None:
+                    msg = "You have already played a card."
+                elif len(tokens) < 2:
+                    msg = "You have to tell me which card you want to send."
+                else:
+                    available = len(player.acards_held)
+                    try:
+                        index = int(tokens[1])
+                        if index < 1 or index > available:
+                            msg = "Please select a card number from 1 to " + str(available) + ", inclusive."
+                        else:
+                            sending = player.acards_held[index-1]
+                            player.acard_played = sending 
+                            self.played.append((sending, player))
+                            msg = "You have sent card #" + str(index) + ": \"" + sending + "\"."
+                            ready = self.answersReady()
+                    except:
+                        msg = "Please select an actual number, from 1 to " + str(available) + ", inclusive."
+            else:
+                msg = "You may not send an answer, as you are setting the question!"
+
+        return msg, ready

@@ -98,45 +98,29 @@ class DealerBot(irc.IRCClient):
         if self.game is not None:
             msg = user + ": Current scores: " + self.game.scoresToString()
             self.msg(self.channel_default, msg)
-            print msg
 
     def doSelect(self, tokens, source, user):
         if self.game is not None:
-            player = self.game.getPlayer(user)
-            if player is not None:
-                if player is self.game.getSetter():
-                    msg = ""
-                    winningcard = None
-                    if not self.game.answersReady():
-                        msg = "Not all answers have been received yet. Be patient!"
-                    elif len(tokens) < 2:
-                        msg = "You have to tell me which card you want to select."
-                    else:
-                        possible = self.game.played
-                        try:
-                            index = int(tokens[1])
-                            if index < 1 or index > len(possible):
-                                msg = "Please select a card number from 1 to " + str(len(possible)) + ", inclusive."
-                            else:
-                                winningcard = self.game.played[index-1]
-                                msg = "You have selected card #" + str(index) + ": \"" + winningcard[0] + "\"."                                
-                        except:
-                            msg = "Please select an actual number, from 1 to " + str(len(possible)) + ", inclusive."
-                    self.msg(user, msg)
-                    if winningcard is not None:
-                        self.awardWin(winningcard)
-                        if self.game.toContinue():
-                            self.game.resetRound()
-                            #self.endGame()
-                            self.round()
-                        else:
-                            self.endGame()
+            msg, winningcard = self.game.getSelectResponse(tokens, user)
+            self.msg(user, msg)
+            if winningcard is not None:
+                self.awardWin(winningcard)
+                if self.game.toContinue():
+                   self.game.resetRound()
+                   self.round()
                 else:
-                    msg = "You are not the question-setter!"
-                    self.msg(user, msg)
+                    self.endGame()
 
     def doSend(self, tokens, source, user):
         if self.game is not None:
+
+            msg, ready = self.game.getSendResponse(tokens, user)
+            self.msg(user, msg)
+            if ready:
+                shuffle(self.game.played) # Shuffle the potential answers for the question-setter
+                self.printSentToSetter()
+
+            '''
             player = self.game.getPlayer(user)
             if player is not None:
                 msg = ""
@@ -165,8 +149,10 @@ class DealerBot(irc.IRCClient):
                 else:
                     msg = "You may not send an answer, as you are setting the question!"
                     self.msg(user, msg)
+                '''
 
     def doStart(self, tokens, source, user):
+
         # Someone attempts to start  
         if self.isQueued(user) and source != self.nickname: # Only players may start a game; no starting games from PM
             if len(self.playerqueue) < Config.PLAYERS_MIN:
@@ -176,24 +162,35 @@ class DealerBot(irc.IRCClient):
                 self.game = Game(self.playerqueue)
                 self.msg(self.channel_default, self.game.getWelcome())
                 self.playerqueue = {}        
-
-                # prototype
-                self.round()
-
-                # the actual loop (not testing here)
-                #while self.game.toContinue():
-                #    self.round(channel)
-
-               #self.endGame(channel)
+                self.play()
 
     def doStats(self, tokens, source, user):
         pass
 
+    def play(self):
+        # prototype
+        self.round()
+
+        # the actual loop (not testing here)
+        #while self.game.toContinue():
+        #    self.round(channel)
+
+       #self.endGame(channel)
+
     def round(self):
         setter = self.game.getSetter()
         question = self.game.dealQuestion()
-        msg = setter.nick + " asks: " + question
-        self.topic(self.channel_default, msg)
+
+        topicmsg = setter.nick + " asks: " + question
+        self.topic(self.channel_default, topicmsg)
+
+        pmmsg = topicmsg + " .Type \"hand\" to see your hand; type \"send <number>\" to send a response."
+        pmmsgsetter = "You have asked: \"" + question + "\". I will PM you again when everyone has responded."
+        for nick, player in self.game.players_bynick.iteritems():
+            if player == self.game.getSetter():
+                self.msg(nick, pmmsgsetter)
+            else:
+                self.msg(nick, pmmsg)
         # await responses
         # wait for setterto select winner
         # self.game.updateSetter()
@@ -202,9 +199,9 @@ class DealerBot(irc.IRCClient):
     def addPlayer(self, mask, nick):
         self.playerqueue[self.joinindex] = Player(mask, nick)
         self.joinindex += 1
-        print nick + " joining."
+        print "[Bot:addPlayer] " + nick + " joining."
         for k, player in self.playerqueue.iteritems():
-          print player.nick + " " + player.hostmask
+          print "Bot:addPlayer] " + player.nick + " " + player.hostmask
         msg = nick + " has joined the game and raised the number of players to " + str(len(self.playerqueue)) + "."
         self.msg(self.channel_default, msg)
         # this works, but commenting out during testing to reduce spam
@@ -271,7 +268,7 @@ class DealerBot(irc.IRCClient):
         player = winningcard[1]
         self.game.awardQuestion(player, card)
         self.printSentToChannel()
-        msg = "The winning answer was " + player.nick + "'s: \"" + card + "\"."
+        msg = self.game.getSetter().nick + " chose " + player.nick + "'s: \"" + card + "\" as the winning answer."
         self.msg(self.channel_default, msg)
 
     def connectionMade(self):
