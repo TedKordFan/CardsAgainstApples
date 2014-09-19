@@ -120,36 +120,6 @@ class DealerBot(irc.IRCClient):
                 shuffle(self.game.played) # Shuffle the potential answers for the question-setter
                 self.printSentToSetter()
 
-            '''
-            player = self.game.getPlayer(user)
-            if player is not None:
-                msg = ""
-                if player is not self.game.getSetter():
-                    if player.acard_played is not None:
-                        msg = "You have already played a card."
-                    elif len(tokens) < 2:
-                        msg = "You have to tell me which card you want to send."
-                    else:
-                        available = len(player.acards_held)
-                        try:
-                            index = int(tokens[1])
-                            if index < 1 or index > available:
-                                msg = "Please select a card number from 1 to " + str(available) + ", inclusive."
-                            else:
-                                sending = player.acards_held[index-1]
-                                player.acard_played = sending
-                                self.game.played.append((sending, player))
-                                msg = "You have sent card #" + str(index) + ": \"" + sending + "\"."
-                        except:
-                            msg = "Please select an actual number, from 1 to " + str(available) + ", inclusive."
-                    self.msg(user, msg)
-                    if self.game.answersReady():
-                        shuffle(self.game.played) # Shuffle the potential answers for the question-setter
-                        self.printSentToSetter()
-                else:
-                    msg = "You may not send an answer, as you are setting the question!"
-                    self.msg(user, msg)
-                '''
 
     def doStart(self, tokens, source, user):
 
@@ -181,10 +151,10 @@ class DealerBot(irc.IRCClient):
         setter = self.game.getSetter()
         question = self.game.dealQuestion()
 
-        topicmsg = setter.nick + " asks: " + question
+        topicmsg = setter.nick + " asks: \"" + question + "\""
         self.topic(self.channel_default, topicmsg)
 
-        pmmsg = topicmsg + " .Type \"hand\" to see your hand; type \"send <number>\" to send a response."
+        pmmsg = topicmsg + ". Type \"hand\" to see your hand; type \"send <number>\" to send a response."
         pmmsgsetter = "You have asked: \"" + question + "\". I will PM you again when everyone has responded."
         for nick, player in self.game.players_bynick.iteritems():
             if player == self.game.getSetter():
@@ -325,18 +295,18 @@ class DealerBot(irc.IRCClient):
         
         tokens = re.split(' *', msg.strip())
 
-        # Check to see if they're sending a private message
-        # These are the same as messages in channel with trigger, except that here trigger is not needed
-        if channel == self.nickname:
-            cmd = tokens[0]
-            if cmd in self.commands:
-                self.commands[cmd](self, tokens, channel, user)            
-
         # Check whether it starts with trigger
-        elif msg.startswith(Config.TRIGGER):
+        if msg.startswith(Config.TRIGGER):
             cmd = tokens[0][len(Config.TRIGGER):]
             if cmd in self.commands:
                 self.commands[cmd](self, tokens, channel, user)
+
+        # Check to see if they're sending a private message
+        # These are the same as messages in channel with trigger, except that here trigger is not needed
+        elif channel == self.nickname:
+            cmd = tokens[0]
+            if cmd in self.commands:
+                self.commands[cmd](self, tokens, channel, user)            
 
         # Otherwise check to see if it is a message directed at me
         #if msg.startswith(self.nickname + ":"):
